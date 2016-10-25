@@ -140,27 +140,31 @@ func (kv *RaftKV) Kill() {
 func (kv *RaftKV) Apply() {
 	for {
 		applyMsg := <-kv.applyCh
-		op := applyMsg.Command.(Op)
-		kv.mu.Lock()
+		if !applyMsg.UseSnapshot {
+			op := applyMsg.Command.(Op)
+			kv.mu.Lock()
 
-		if kv.checkDup(op.Cid, op.Rid) == false {
-			switch op.Type {
-			case PUT:
-				kv.db[op.Key] = op.Value
-			case APPEND:
-				kv.db[op.Key] += op.Value
+			if kv.checkDup(op.Cid, op.Rid) == false {
+				switch op.Type {
+				case PUT:
+					kv.db[op.Key] = op.Value
+				case APPEND:
+					kv.db[op.Key] += op.Value
+				}
 			}
-		}
-		kv.dupTable[op.Cid] = op.Rid
+			kv.dupTable[op.Cid] = op.Rid
 
-		ch, ok := kv.applyResult[applyMsg.Index]
-		if !ok {
-			ch = make(chan Op, 1)
-			kv.applyResult[applyMsg.Index] = ch
-		}
+			ch, ok := kv.applyResult[applyMsg.Index]
+			if !ok {
+				ch = make(chan Op, 1)
+				kv.applyResult[applyMsg.Index] = ch
+			}
 
-		kv.mu.Unlock()
-		ch <- op
+			kv.mu.Unlock()
+			ch <- op
+		} else {
+
+		}
 	}
 }
 
