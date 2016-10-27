@@ -1,6 +1,7 @@
 package raftkv
 
 import (
+	"bytes"
 	"encoding/gob"
 	"labrpc"
 	"log"
@@ -159,11 +160,30 @@ func (kv *RaftKV) Apply() {
 				ch = make(chan Op, 1)
 				kv.applyResult[applyMsg.Index] = ch
 			}
-
-			kv.mu.Unlock()
 			ch <- op
-		} else {
 
+			if kv.maxraftstate != -1 && kv.rf.GetPersistSize() > kv.maxraftstate {
+				w := new(bytes.Buffer)
+				e := gob.NewEncoder(w)
+				e.Encode(kv.db)
+				e.Encode(kv.dupTable)
+				data := w.Bytes()
+				go kv.rf.SaveSnapshot(applyMsg.Index, data)
+			}
+			kv.mu.Unlock()
+		} else {
+			LastIncludedIndex := 0
+			LastIncludedTerm := 0
+
+			r := bytes.NewBuffer(applyMsg.Snapshot)
+			d := gob.NewDecoder(r)
+			d.Decode(&LastIncludedIndex)
+			d.Decode(&LastIncludedTerm)
+
+			kv.mu.Lock()
+			d.Decode(&kv.db)
+			d.Decode(&kv.dupTable)
+			kv.mu.Unlock()
 		}
 	}
 }
